@@ -2,20 +2,30 @@
  * T E S T S 
  */
  
-var Uni = require('./ranger.js');
+var Rng = require('./Ranges.js');
 
-test1();
+
+
+test_01('[10:30)', '[20:40]');
+test_01('[5:10)', '[20:40]');
+test_01('[10:30)', '[5:40]');
+test_01('[1:10]', '(1:40]');
+
+// sets global aliases to the methods, so its compatible with client's initial request.
+function mock() {
+	window.SegmentString = Rng.Range;
+}
 
 
 // test functions
-function test1() {
-	var A = new Uni.Range('[10:30)');
-	var B = new Uni.Range('[20:40]');
-	console.log( A.toString(), B.toString());
+function test_01( s1, s2) {
+	var  A = new Rng.Range(s1)
+		,B = new Rng.Range(s2)
+		,R = new Rng.RangeSet([A, B])
+		,out = R.subtract( A)
+	;
 	
-	var R = new Uni.RangeSet([ A, B]);
-	var out = R.subtract( A);
-	for( var i=0; i<out.length; i++) console.log( out[i].toString());
+	console.log( A.toString(), '-', B.toString(), '=', out.join(' '));
 }
 
 

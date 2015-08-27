@@ -1,31 +1,33 @@
 "use strict";
 
 module.exports = (function(){
+
+
 	/**
-	 * Tool to intersect ranges.
+	 * Operations on ranges.
 	 *
-	 * We have two "tracks": Data and Unique
-	 * Data track contains ranges that are joined;
-	 * Unique track supposed to contain only one range, however should work with more too.
-	 * Output contains parts of "Unique" ranges, not present in the "Data" track.
+	 * by Sergei Sokolov <hello@sergeisokolov.com>
+	 * Moscow, 2015.
 	 */
-	var Uni = {};
-	
+	var Rng = {};	// Root Object.
+
+
 	/**
 	 * Single point
-	 * @param float x value
-	 * @param int mask - bitmask:
-	 *						bit 0 is on if range after the dot is included
-	 *						bit 1 is on if the dot itself is included
-	 *						bit 2 is on if range before the dot is included
-	 *						bit 3 is on if Point is on Unique track
+	 * @param float	x		value
+	 * @param int	mask	bitmask:
+	 *							bit 0 - range after the dot is included
+	 *							bit 1 - the dot itself is included
+	 *							bit 2 - range before the dot is included
+	 *							bit 3 - Point is on Unique track
 	 */
-	Uni.Point = function(x, mask) {
+	Rng.Point = function(x, mask) {
 	    this.x = x;						// value
-	    this.mask = 0xF & mask;			// the three bits only
+	    this.mask = 0xF & mask;			// four bits only
 	}
 	
-	Uni.Point.prototype.toString = function() {
+	Rng.Point.prototype.toString = function() {
+		if( this.mask == 0x2) return '['+this.x+']';		// single point
 		return '' +
 			(this.mask & 0x1 ? (this.mask & 0x2 ? '[' : '(') : '')
 			+
@@ -39,7 +41,7 @@ module.exports = (function(){
 	 * Single range
 	 * Consists of two Points.
 	 */
-	Uni.Range = function(s){
+	Rng.Range = function(s){
 		var m = s.match(/^([\(\[])([\d\.]+):([\d\.]+)([\)\]])$/);
 		if(!m || m.length != 5) throw('Range string has wrong format: ' + s);
 	
@@ -54,26 +56,29 @@ module.exports = (function(){
 	 * Get the two Points form the Range.
 	 * @param boolean unique optional - true to set additional "Master" property
 	 */
-	Uni.Range.prototype.getPoints = function( unique){
+	Rng.Range.prototype.getPoints = function( unique){
 	    return [
-	        new Uni.Point( this.from, (this.from_inc ? 0x3 : 0x1) | !!unique<<3),
-	        new Uni.Point( this.to,   (this.to_inc   ? 0x6 : 0x4) | !!unique<<3)
+	        new Rng.Point( this.from, (this.from_inc ? 0x3 : 0x1) | !!unique<<3),
+	        new Rng.Point( this.to,   (this.to_inc   ? 0x6 : 0x4) | !!unique<<3)
 	    ];
 	}
 	
-	Uni.Range.prototype.toString = function() {
+	Rng.Range.prototype.toString = function() {
 		return ( this.from_inc ? '[' : '(') +this.from +':' +this.to +(this.to_inc ? ']' : ')');
 	}
 	
 	
-	Uni.Cursor = function() {
+	/**
+	 * Pointer moving left to right.
+	 */
+	Rng.Cursor = function() {
 		this.i = 0;	// initial value
 		this.m = 0;	// minus (unsigned int)
 		this.p = 0;	// plus
 		this.inc = false;
 	}
 	
-	Uni.Cursor.prototype.add = function(v) {
+	Rng.Cursor.prototype.add = function(v) {
 		if( v & 0x4) {			// closing end
 			this.m ++;			// minus
 		} else if( v & 0x1) {	// "start" change affects dot (if inc) or post
@@ -86,16 +91,15 @@ module.exports = (function(){
 		if( v & 0x2) this.inc = true;
 	}
 	
-	Uni.Cursor.prototype.toString = function() {
+	Rng.Cursor.prototype.toString = function() {
 		return '' +this.i +' -' +this.m +' +' +this.p +( this.inc ? " • " : " o ");
 	}
 	
 	
 	/**
 	 * Returns a in-dot-out bit mask for the track
-	 * 
 	 */
-	Uni.Cursor.prototype.can = function() {
+	Rng.Cursor.prototype.can = function() {
 		var out = this.inc ? 0x2 : 0;			// bit 1: is dot included?
 		
 		if( this.i > this.m) return 0x7;		// some track passes by this point, covering it completely
@@ -104,31 +108,30 @@ module.exports = (function(){
 		if( this.p > 0) out = out | 0x1;
 		
 		if( this.i > 0  &&  this.i == this.m) {	// bit 2: did data hit 0?
-			console.log('hit 0');
+			//console.log('hit 0');
 		}
 		
 		if( this.i == this.m  &&  this.p > 0) {	// bit 0: did data rise from 0?
-			console.log('rise from 0');
+			//console.log('rise from 0');
 		}
 		
 		return out;
 	}
 	
-	Uni.Cursor.prototype.binprint = function(v,l) {
+	Rng.Cursor.prototype.binprint = function(v,l) {
 		var i, s = '';
 		l = l || 4;	// length
-		for( i=0; i<l; i++) {
-			s = (v & 1<<i ? '1' : '0') + s;
-		}
+		for( i=0; i<l; i++)  s = (v & 1<<i ? '1' : '0') + s;
+
 		return s;
 	}
 	
-	Uni.Cursor.prototype.canTest = function() {
+	Rng.Cursor.prototype.canTest = function() {
 		var v = this.can();
 		return this.binprint( v, 3);
 	}
 	
-	Uni.Cursor.prototype.next = function() {
+	Rng.Cursor.prototype.next = function() {
 		var v = this.i - this.m + this.p;
 		
 		this.i = v;
@@ -142,16 +145,23 @@ module.exports = (function(){
 	 * Range Set - set of ranges.
 	 * Can perform various operations on the Ranges it contains
 	 */
-	Uni.RangeSet = function( rangeArray) {
+	Rng.RangeSet = function( rangeArray) {
 	    this.ranges = rangeArray;
 	}
-	
+
+
 	/**
 	 * Find range that is in R, but not in any of the RS
+	 *
+	 * We have two "tracks": Data and Unique
+	 * Data track contains ranges that are joined;
+	 * Unique track supposed to contain only one range, however should work with more too.
+	 * Output contains parts of "Unique" ranges, not present in the "Data" track.
 	 */
-	Uni.RangeSet.prototype.subtract = function(R) {
+	Rng.RangeSet.prototype.subtract = function(R) {
 		var input = []					// array of given points: ranges and want
-			,output = []				// array of Points
+			,result = []				// array of Points
+			,output
 	
 			,hash = R.toString()
 			,P							// current Point
@@ -162,8 +172,8 @@ module.exports = (function(){
 			// any incoming Point updates either pre, dot or post section;
 			// to get next point's pre state, we sum them up.
 			,X = {
-				 data	: new Uni.Cursor()
-				,test	: new Uni.Cursor()
+				 data	: new Rng.Cursor()
+				,test	: new Rng.Cursor()
 			}
 			
 			,out	// bit mask for the possible new out Point
@@ -193,7 +203,7 @@ module.exports = (function(){
 	
 	
 			// Before finalize
-			console.log(
+			false  &&  console.log(
 				'Finalize ' +P.x +':', X.data.toString(), X.test.toString()
 			);
 	
@@ -202,17 +212,27 @@ module.exports = (function(){
 			
 	
 			out = ~( ~X.test.can() | X.data.can());
-			console.log( X.test.canTest(), X.data.canTest(), '=', X.data.binprint( out, 3));
-	//  		output.push( new Uni.Point( P.x, 1, true));
+// console.log( X.test.canTest(), X.data.canTest(), '=', X.data.binprint( out, 3));
+
 			if( out  &&  out != 0x7) {
-				output.push( new Uni.Point( P.x, out));
+				result.push( new Rng.Point( P.x, out));
 			}
 			
 			// Prepare for next position
 			X.data.next();
 			X.test.next();
 		}
-		if( output.length == 0) output = ["no Points"];
+		if( result.length == 0) return ["no Points"];
+		
+		output = [];
+		for( i=1; i<result.length; i+=2) {
+			output.push( result[i-1].toString() +':' +result[i].toString());
+		}
+		
+		if( i == result.length) {
+			//console.log('odd');
+			output.push( result[i-1].toString());
+		}
 		
 		return output;
 	}
@@ -227,11 +247,11 @@ module.exports = (function(){
 	 * open ends "(", ")" - do not count for the current X
 	 *    
 	 */
-	Uni.RangeSet.prototype.sorter = function(a, b) {
+	Rng.RangeSet.prototype.sorter = function(a, b) {
 		return (a.x < b.x) ? -1 : (( a.x > b.x) ? 1 : 0);
 	}
 
 
 	// nodejs module wrap up
-	return Uni;
+	return Rng;
 })();
